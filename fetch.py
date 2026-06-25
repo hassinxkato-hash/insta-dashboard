@@ -34,6 +34,7 @@ ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN", "").strip()
 APP_ID = os.environ.get("APP_ID", "").strip()
 APP_SECRET = os.environ.get("APP_SECRET", "").strip()
 IG_USER_ID = os.environ.get("IG_USER_ID", "").strip()
+PAGE_TOKEN = ""  # business_discovery はページトークンで叩く（#10対策）
 ALERT_DAYS = int(os.environ.get("ALERT_DAYS", "14") or "14")
 API_VERSION = os.environ.get("API_VERSION", "v22.0")
 GRAPH = "https://graph.facebook.com/" + API_VERSION
@@ -62,18 +63,21 @@ def refresh_token():
 
 
 def resolve_ig_user_id():
-    global IG_USER_ID
-    if IG_USER_ID:
-        return IG_USER_ID
+    """ページを走査し、IGビジネスアカウントとそのページトークンを採用する。"""
+    global IG_USER_ID, PAGE_TOKEN
     r = requests.get(GRAPH + "/me/accounts", params={
-        "fields": "instagram_business_account",
+        "fields": "name,access_token,instagram_business_account",
         "access_token": ACCESS_TOKEN}, timeout=30).json()
     if "error" in r:
         sys.exit("IG User ID 取得失敗: " + r["error"].get("message", ""))
     for page in r.get("data", []):
         iba = page.get("instagram_business_account")
-        if iba:
+        if not iba:
+            continue
+        # IG_USER_ID が未指定なら最初のIGビジネスアカウントを採用
+        if not IG_USER_ID or IG_USER_ID == iba["id"]:
             IG_USER_ID = iba["id"]
+            PAGE_TOKEN = page.get("access_token") or ""
             return IG_USER_ID
     sys.exit("FacebookページにInstagramビジネスアカウントが連携されていません。")
 
@@ -81,8 +85,9 @@ def resolve_ig_user_id():
 def fetch_account(username):
     fields = ("business_discovery.username(" + username +
               "){name,username,media_count,media{timestamp,caption}}")
+    token = PAGE_TOKEN or ACCESS_TOKEN
     r = requests.get(GRAPH + "/" + IG_USER_ID,
-                     params={"fields": fields, "access_token": ACCESS_TOKEN},
+                     params={"fields": fields, "access_token": token},
                      timeout=30).json()
     if "error" in r:
         return {"error": r["error"].get("message", "取得失敗")}
