@@ -110,9 +110,12 @@ def build_dashboard(records):
     data_json = json.dumps(records, ensure_ascii=False)
     n = dt.datetime.now(dt.timezone(dt.timedelta(hours=9)))
     stamp = "{:04d}-{:02d}-{:02d} {:02d}:{:02d}".format(n.year, n.month, n.day, n.hour, n.minute)
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
+    run_url = ("https://github.com/" + repo + "/actions/workflows/update.yml") if repo else "#"
     html = DASHBOARD_TEMPLATE.replace("/*__DATA__*/", data_json)
     html = html.replace("__ALERT_DAYS__", str(ALERT_DAYS))
     html = html.replace("__UPDATED__", stamp + " (JST)")
+    html = html.replace("__RUN_URL__", run_url)
     os.makedirs(DOCS_DIR, exist_ok=True)
     with open(OUTPUT_HTML, "w", encoding="utf-8") as f:
         f.write(html)
@@ -139,7 +142,9 @@ def main():
             print("NG ", user, res["error"])
         else:
             ok += 1
-            row[col["店舗名"]] = res["name"]
+            # 店舗名はCSVの日本語名を優先（空のときだけAPIの表示名で補完）
+            if not row[col["店舗名"]].strip():
+                row[col["店舗名"]] = res["name"]
             row[col["最終投稿日"]] = res["last"]
             row[col["今月の投稿数"]] = res["count"]
             row[col["直近の投稿内容"]] = res["content"]
@@ -179,6 +184,9 @@ header h1{margin:0;font-size:20px;} header p{margin:4px 0 0;opacity:.9;font-size
 .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:18px 0;}
 .toolbar input,.toolbar select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:13px;}
 .toolbar label{font-size:12px;color:var(--sub);}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;background:var(--brand);color:#fff;font-size:13px;font-weight:700;text-decoration:none;cursor:pointer;border:none;}
+.btn:hover{opacity:.9;}
+.note{font-size:12px;color:var(--sub);margin-left:6px;}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;}
 .kpi .n{font-size:28px;font-weight:800;line-height:1;} .kpi .l{font-size:12px;color:var(--sub);margin-top:6px;}
@@ -207,6 +215,8 @@ a.ig{color:var(--brand);text-decoration:none;font-weight:600;} a.ig:hover{text-d
       <option value="">全ステータス</option><option value="bad">未投稿アラートのみ</option>
       <option value="warn">投稿少なめ</option><option value="ok">良好</option></select>
     <label>アラート日数:<input type="text" id="thr" value="__ALERT_DAYS__" style="width:46px" oninput="render()"> 日以上未投稿</label>
+    <a class="btn" href="__RUN_URL__" target="_blank" rel="noopener">🔄 今すぐ最新に更新</a>
+    <span class="note">押すとGitHubの実行画面が開きます →「Run workflow」で最新データを取得（数分で反映）</span>
   </div>
   <div class="kpis" id="kpis"></div>
   <div class="card"><table>
